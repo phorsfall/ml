@@ -1,155 +1,133 @@
-import cPickle as pickle
-import os.path
 import collections
 import functools
 import itertools
 import operator
+import os.path
 
 import numpy as np
 
-from ml import utils, data, optimize, mnist, rbm
+from ml import utils, data, optimize, mnist, rbm, dbn, parameters, meta
+from ml import regularization as reg
 from ml.sigmoid import logistic
 
 OUTPUT_PATH = os.path.expanduser('~/Development/ml/output')
 DATA_PATH = os.path.expanduser('~/Development/ml/datasets')
 
-# The first arg passed to namedtuple needs to match the var name
-# otherwise pickling fails.
-params_tuple = collections.namedtuple('params_tuple', 'W_r1 b_r1 W_r2 b_r2 W_g1 b_g1 W_g2 b_g2 W v_bias h_bias')
-
-def load_params(path, filename):
-    with(open(os.path.join(path, filename), 'rb')) as f:
-        return params_tuple._make(pickle.load(f))
-
-def sample_v_softmax(rbm, h, h_mean, k):
-    """
-    Sample the visible units, treating the k right-most units as a
-    softmax group.
-    """
-    # Top down activity for all units.
-    a = h.dot(rbm.W) + rbm.v_bias
-    # Softmax units.
-    u = a[:,-k:] # Un-normalized log probabilities.
-    log_prob = u - np.log(np.sum(np.exp(u), 1))[:,np.newaxis]
-    prob = np.exp(log_prob)
-    labels = sample_softmax(prob)
-    # Logistic units.
-    v_mean = logistic(a[:,:-k])
-    v = v_mean > np.random.random(v_mean.shape)
-    return np.hstack((v, labels))
-
-def sample_softmax(prob):
-    num_cases = prob.shape[0]
-    out = np.zeros(prob.shape)
-    # Can this be vectorized?
-    for i in xrange(num_cases):
-        out[i] = np.random.multinomial(1, prob[i], 1)
-    return out
-
-sample_v = functools.partial(sample_v_softmax, k=mnist.NUM_CLASSES)    
-
-def up_down(params, data, weight_penalty=0, rng=np.random):
-    """
-    The up-down algorithms as described in "A fast learning algorithm
-    for deep belief nets".
-    """
+def contrastive_wake_sleep(params, data, weight_decay=None, cd_k=1):
     inputs, targets = data.inputs, data.targets
     num_cases = inputs.shape[0]
 
-    # Wake/positive phase.
-    wake_hid1_probs = logistic(inputs.dot(params.W_r1.T) + params.b_r1)
-    wake_hid1_states = wake_hid1_probs > rng.random(wake_hid1_probs.shape)
+    # Turn the single tuple of parameters into something easier to
+    # work with.
+    dbn_params = dbn.stack_params(params)
+    grad = []
 
-    wake_hid2_probs = logistic(wake_hid1_states.dot(params.W_r2.T) + params.b_r2)
-    wake_hid2_states = wake_hid2_probs > rng.random(wake_hid2_probs.shape)
+    # Wake phase.
+    wake_hid1_states = rbm.sample_bernoulli(logistic(inputs.dot(dbn_params[0].W_r) + dbn_params[0].b_r))
+    wake_hid2_states = rbm.sample_bernoulli(logistic(wake_hid1_states.dot(dbn_params[1].W_r) + dbn_params[1].b_r))
 
-    # Ideally I'd like to use rbm.cd to do the training of the
-    # top-level rbm, but as it stands although I could use it to
-    # compute the gradient I don't get back the states of the hidden
-    # units which I need to perform the down pass. Perhaps this could
-    # be solved if the gibbs chain could be passing in to rbm.cd as an
-    # parameter.
+    # Contrastive divergence.
+    gc = rbm.gibbs_chain(np.hstack((targets, wake_hid2_states)),
+                         dbn_params[-1],
+                         rbm.sample_h,
+                         sample_v_softmax,
+                         cd_k + 1)
 
-    rbm_params = rbm.params(params.W, params.v_bias, params.h_bias)
-    
-    k = 8 # cd_k
-    gc = rbm.gibbs_chain(np.hstack((wake_hid2_states, targets)), rbm_params, rbm.sample_h, sample_v, k+1)
+    pos_sample = gc.next()
+    if cd_k == 1:
+        neg_sample = gc.next()
+    else:
+        recon_sample = gc.next()
+        neg_sample = itertools.islice(gc, cd_k - 2, None).next()
 
-    v0, h0, h0_mean = gc.next()
-    v1, h1, h1_mean = itertools.islice(gc, k-1, None).next()
-
-    pos_grad = rbm.neg_free_energy_grad(params, (v0, h0, h0_mean))
-    neg_grad = rbm.neg_free_energy_grad(params, (v1, h1, h1_mean))
-
-    rbm_grad = map(operator.sub, neg_grad, pos_grad)
-
-    # sleep_hid2_states really is states as the sample_v_softmax
-    # function in this file does do sampling.
-    sleep_hid2_states = v1[:,:-mnist.NUM_CLASSES]
-    sleep_hid1_probs = logistic(sleep_hid2_states.dot(params.W_g2) + params.b_g2)
-    sleep_hid1_states = sleep_hid1_probs > rng.random(sleep_hid1_probs.shape)
-    sleep_vis_probs = logistic(sleep_hid1_states.dot(params.W_g1) + params.b_g1)
+    # Sleep phase.
+    sleep_hid2_states = neg_sample[0][:,mnist.NUM_CLASSES:]
+    sleep_hid1_states = rbm.sample_bernoulli(logistic(sleep_hid2_states.dot(dbn_params[1].W_g) + dbn_params[1].b_g))
+    sleep_vis_probs = logistic(sleep_hid1_states.dot(dbn_params[0].W_g) + dbn_params[0].b_g)
 
     # Predictions.
-    p_sleep_hid2_states = logistic(sleep_hid1_states.dot(params.W_r2.T) + params.b_r2)
-    p_sleep_hid1_states = logistic(sleep_vis_probs.dot(params.W_r1.T) + params.b_r1)
-    p_vis_probs = logistic(wake_hid1_states.dot(params.W_g1) + params.b_g1)
-    p_hid1_probs = logistic(wake_hid2_states.dot(params.W_g2) + params.b_g2)
+    p_sleep_hid2 = logistic(sleep_hid1_states.dot(dbn_params[1].W_r) + dbn_params[1].b_r)
+    p_sleep_hid1 = logistic(sleep_vis_probs.dot(dbn_params[0].W_r) + dbn_params[0].b_r)
+    p_wake_vis = logistic(wake_hid1_states.dot(dbn_params[0].W_g) + dbn_params[0].b_g)
+    p_wake_hid1 = logistic(wake_hid2_states.dot(dbn_params[1].W_g) + dbn_params[1].b_g)
+
+    # Gradients.
+    # Layer 0.
+    W_r_grad = sleep_vis_probs.T.dot(p_sleep_hid1 - sleep_hid1_states) / num_cases
+    b_r_grad = np.mean(p_sleep_hid1 - sleep_hid1_states, 0)
+    W_g_grad = wake_hid1_states.T.dot(p_wake_vis - inputs) / num_cases
+    b_g_grad = np.mean(p_wake_vis - inputs, 0)
+    grad.extend([W_r_grad, b_r_grad, W_g_grad, b_g_grad])
+
+    # Layer 1.
+    W_r_grad = sleep_hid1_states.T.dot(p_sleep_hid2 - sleep_hid2_states) / num_cases
+    b_r_grad = np.mean(p_sleep_hid2 - sleep_hid2_states, 0)
+    W_g_grad = wake_hid2_states.T.dot(p_wake_hid1 - wake_hid1_states) / num_cases
+    b_g_grad = np.mean(p_wake_hid1 - wake_hid1_states, 0)
+    grad.extend([W_r_grad, b_r_grad, W_g_grad, b_g_grad])
     
-    # Updates to generative parameters.
-    W_g1_grad = wake_hid1_states.T.dot(inputs - p_vis_probs) / num_cases
-    b_g1_grad = np.mean(inputs - p_vis_probs, 0)
-    
-    W_g2_grad = wake_hid2_states.T.dot(wake_hid1_states - p_hid1_probs) / num_cases
-    b_g2_grad = np.mean(wake_hid1_states - p_hid1_probs, 0)
+    # Top-level RBM.
+    pos_grad = rbm.neg_free_energy_grad(dbn_params[-1], pos_sample)
+    neg_grad = rbm.neg_free_energy_grad(dbn_params[-1], neg_sample)
+    rbm_grad = map(operator.sub, neg_grad, pos_grad)
+    grad.extend(rbm_grad)
 
-    # Updates to recognition parameters.
-    W_r2_grad = sleep_hid1_states.T.dot(sleep_hid2_states - p_sleep_hid2_states).T / num_cases
-    b_r2_grad = np.mean(sleep_hid2_states - p_sleep_hid2_states, 0)
-    W_r1_grad = sleep_vis_probs.T.dot(sleep_hid1_states - p_sleep_hid1_states).T / num_cases
-    b_r1_grad = np.mean(sleep_hid1_states - p_sleep_hid1_states, 0)
+    # Weight decay.
+    if weight_decay:
+        weight_grad = (weight_decay(p)[1] for p in params)
+        grad = map(operator.add, grad, weight_grad)
 
-    # Reconstruction error.
-    cost = np.sum((inputs - sleep_vis_probs) ** 2) / num_cases
-    
-    grad = (-W_r1_grad, -b_r1_grad,
-            -W_r2_grad, -b_r2_grad,
-            -W_g1_grad, -b_g1_grad,
-            -W_g2_grad, -b_g2_grad,
-            rbm_grad[0], rbm_grad[1], rbm_grad[2])
+    # One-step reconstruction error.
+    if cd_k == 1:
+        recon = sleep_vis_probs
+    else:
+        # Perform a determisitic down pass from the first sample of
+        # the Gibbs chain in order to compute the one-step
+        # reconstruction error.
+        recon_hid2_probs = recon_sample[1][:,mnist.NUM_CLASSES:]
+        recon_hid1_probs = rbm.sample_bernoulli(logistic(recon_hid2_probs.dot(dbn_params[1].W_g) + dbn_params[1].b_g))
+        recon = logistic(recon_hid1_probs.dot(dbn_params[0].W_g) + dbn_params[0].b_g)
 
-    if weight_penalty > 0:
-        grad = tuple(g_i + weight_penalty * p_i
-                     for p_i, g_i
-                     in zip(params, grad))
+    error = np.sum((inputs - recon) ** 2) / num_cases
 
-    return cost, grad
+    return error, grad
 
-# Each run listed below started from the parameters from the line
-# above and using the meta-parameteres listed.
+np.random.seed(1234)
 
-# mnist_dbm_pretrain.zip.
-# 1357409197 - cd_3, lr 0.01, momentum (0.5, 0.9, 10), 50 epochs
-# 1357428588 - cd_3, lr 0.01, momentum (0.5, 0.9, 10), 50 epochs
-# 1357463280 - cd_5, lr 0.001, momentum (0.5, 0.9, 10), 50 epochs
-# 1357497070 - cd_10, lr 0.00001, momentum (0.5, 0.9, 10), 25 epochs
-# 1357570303 - cd_8, lr 0.001, m (0.5, 0.9, 10), 50 ep, wp 0.0002
+# data
+inputs = mnist.load_inputs(DATA_PATH, mnist.TRAIN_INPUTS)
+labels = mnist.load_labels(DATA_PATH, mnist.TRAIN_LABELS)
+inputs, targets, labels = data.balance_classes(inputs, labels, mnist.NUM_CLASSES)
+n = 54200
+inputs = inputs[0:n]
+targets = targets[0:n]
+labels = labels[0:n]
+dataset = data.dataset(inputs, targets, labels)
+batches = data.BatchIterator(dataset)
 
-initial_params = load_params(os.path.join(OUTPUT_PATH, '1357497070'), '24.pickle')
-
-training, validation = mnist.load_training_dataset(DATA_PATH)
-batches = data.BatchIterator(training)
-
+# meta
 epochs = 50
-learning_rate = 0.001
-momentum = optimize.linear(0.5, 0.9, 10)
-weight_penalty = 0.0002
+learning_rate = 0.1
+cd_k = 15
+weight_decay = reg.l2(0.0002)
+momentum = 0 #0.1
 
-save_params = utils.save_params_hook(OUTPUT_PATH)
+# Load and stack params from initial pre-training.
+# initial_params = dbn.params_from_rbms([parameters.load(OUTPUT_PATH, t)
+#                                        for t in (1358445776, 1358451846, 1358456203)])
 
+# Params after first 50 epochs of fine tuning. (lr 0.1, p 0.0, cd_k=10)
+initial_params = parameters.load(OUTPUT_PATH, timestamp=1358541318)
+
+# The sampling function used by the top-level RBM.
+sample_v_softmax = functools.partial(rbm.sample_v_softmax, k=mnist.NUM_CLASSES)
+
+# Optimization objective.
 def f(params, data):
-    return up_down(params, data, weight_penalty=weight_penalty)
+    return contrastive_wake_sleep(params, data, weight_decay, cd_k)
 
-opt_params = optimize.sgd(f, initial_params, batches, epochs, learning_rate,
-                          momentum=momentum,
-                          post_epoch=save_params)
+output_dir = utils.make_output_directory(OUTPUT_PATH)
+save_params = parameters.save_hook(output_dir)
+
+params = optimize.sgd(f, initial_params, batches, epochs, learning_rate, momentum,
+                      post_epoch=save_params)

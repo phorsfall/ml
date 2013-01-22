@@ -2,134 +2,86 @@ import os.path
 import functools
 import itertools
 import collections
-import cPickle as pickle
+import operator
+import tempfile
 
 import numpy as np
 
-from ml import mnist, utils, optimize, rbm, data
+from ml import mnist, utils, optimize, rbm, dbn, data, parameters
 from ml.sigmoid import logistic
 
-print '***eval***'
-
-# This is my first attempt at generating fantasies from a deep belief
-# net. The code is pretty messy so I might just dump it, although I
-# learnt a bunch from it.
-
-# Generating from this model (that is, without fine-tuning) isn't all
-# that great.
+np.random.seed(32)
 
 DATA_PATH = os.path.expanduser('~/Development/ml/datasets')
 OUTPUT_PATH = os.path.expanduser('~/Development/ml/output')
 
-params_tuple = collections.namedtuple('params_tuple', 'W_r1 b_r1 W_r2 b_r2 W_g1 b_g1 W_g2 b_g2 W v_bias h_bias')
+sample_v_softmax = functools.partial(rbm.sample_v_softmax, k=mnist.NUM_CLASSES)
 
-def load_params(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
-
-# TODO: Maybe create a rbm_softmax module for this if it works out.
-# TODO: Need to figure out how determine whether this and other
-# sample_v functions should perform sampling. At the moment,
-# rbm.sample_v never does, but this only works for cd1, it won't work
-# when generating samples etc.
-def sample_v_softmax(rbm, h, h_mean, k, clamped_labels=None):
+def up_pass(params, pixels):
     """
-    Sample the visible units, treating the k right-most units as a
-    softmax group.
+    Perform and upward pass from the visible pixels to the visible
+    units of the top-level RBM.
     """
-    # Top down activity for all units.
-    a = h.dot(rbm.W) + rbm.v_bias
-    # Softmax units.
-    if clamped_labels is None:
-        u = a[:,-k:] # Un-normalized log probabilities.
-        log_prob = u - np.log(np.sum(np.exp(u), 1))[:,np.newaxis]
-        prob = np.exp(log_prob)
-        labels = sample_softmax(prob)
-    else:
-        labels = clamped_labels
-    # Logistic units.
-    v_mean = logistic(a[:,:-k])
-    v = v_mean > np.random.random(v_mean.shape)
-    return np.hstack((v, labels))
+    # This is deterministic. (i.e. It uses the real-valued
+    # probabilities rather than sampling.)
+    hid1_mean = logistic(pixels.dot(params[0].W_r) + params[0].b_r)
+    hid2_mean = logistic(hid1_mean.dot(params[1].W_r) + params[1].b_r)
+    return hid2_mean
 
-def sample_softmax(prob):
-    num_cases = prob.shape[0]
-    out = np.zeros(prob.shape)
-    # Can this be vectorized?
-    for i in xrange(num_cases):
-        out[i] = np.random.multinomial(1, prob[i], 1)
-    return out
-
-def downward_pass(visible_activations, params):
+def down_pass(params, v):
     """
-    Perform a deterministic downward pass starting as the visible
-    units of the top-level associative memory.
+    Perform a deterministic downward pass from the visible units of
+    the top-level RBM to the visible pixels.
     """
-    # TODO: This could probably reuse the various sample_v functions.
-    k = mnist.NUM_CLASSES
-    # Downward pass.
-    # Not sure whether to sample here. So far, it doesn't seem to make
-    # much difference.
-    v2_mean = visible_activations[:,0:-k]
-    #v2 = v2_mean > np.random.random(v2_mean.shape)
-    v2 = v2_mean
-    v1_mean = logistic(v2.dot(params.W_g2) + params.b_g2)
-    #v1 = v1_mean > np.random.random(v1_mean.shape)
-    v1 = v1_mean
-    pixels = logistic(v1.dot(params.W_g1) + params.b_g1)
-    return pixels
+    # The visible units of the top-level RBM include a softmax group
+    # which is not directly connected to the visible pixels.
+    hid2_mean = v[:,mnist.NUM_CLASSES:]
+    hid1_mean = logistic(hid2_mean.dot(params[1].W_g) + params[1].b_g)
+    vis_mean = logistic(hid1_mean.dot(params[0].W_g) + params[0].b_g)
+    return vis_mean
+
+# inputs = mnist.load_inputs(DATA_PATH, mnist.TRAIN_INPUTS)
+# labels = mnist.load_labels(DATA_PATH, mnist.TRAIN_LABELS)
+# inputs, _, labels = data.balance_classes(inputs, labels, mnist.NUM_CLASSES)
+
+def generate(params):
+    dbn_params = dbn.stack_params(params)
+
+    # 10 fantasies.
+    # initial_pixels = np.zeros((10, 28**2))
+    # initial_pixels = inputs[0:10]
+
+    # Clamp the softmax units, one for each class.
+    sample_v_softmax_clamped = functools.partial(sample_v_softmax,
+                                                 labels=np.eye(10))
+
+    # Perform an upward pass from the pixels to the visible units of
+    # the top-level RBM.
+    # initial_v = np.hstack((
+    #         np.eye(10),
+    #         up_pass(dbn_params, initial_pixels)))
+
+    initial_v = np.hstack((
+            np.eye(10),
+            np.random.random((10, dbn_params[-1].W.shape[1] - 10))))
+
+    # Initialize the gibbs chain.
+    gc = rbm.gibbs_chain(initial_v,
+                         dbn_params[-1],
+                         rbm.sample_h,
+                         sample_v_softmax_clamped)
+
+    tile_2_by_5 = functools.partial(utils.tile, grid_shape=(2, 5))
+
+    gen = itertools.islice(gc, 1, None, 1)
+    gen = itertools.islice(gen, 2000)
+    gen = itertools.imap(operator.itemgetter(1), gen)
+    gen = itertools.imap(lambda v: down_pass(dbn_params, v), gen)
+    gen = itertools.imap(tile_2_by_5, gen)
+
+    # Save to disk.
+    utils.save_images(gen, tempfile.mkdtemp(dir=OUTPUT_PATH))
 
 
-np.random.seed(32)
-
-# TODO: Maybe pickle these as a single file. Is a tuple ok?
-# Load the parameters from greedy pre-training of the RBMs.
-params = load_params(os.path.join(OUTPUT_PATH, '1357570303', '49.pickle'))
-
-# TODO: Need to figure out the naming of layers etc.
-
-num_hid2 = 500
-
-n = 10 # Number of fantasies to generate.
-
-clamp_digit = 2
-clamped_labels = np.repeat(np.eye(mnist.NUM_CLASSES)[[clamp_digit]], n, 0)
-clamped_labels = np.eye(10)
-
-uniform_initial_labels = np.ones((n, mnist.NUM_CLASSES)) / mnist.NUM_CLASSES
-
-# Initializing the chain by doing a bottom up pass from random pixels
-# seems to work better than randomly initializing the visible units of
-# the top-level RBM.
-# initial_pen = np.random.random((n, num_hid2))
-rand_pixels = np.random.random((n, 784))
-rand_hid1 = logistic(rand_pixels.dot(params.W_r1.T) + params.b_r1)
-rand_hid1 = rand_hid1 > np.random.random(rand_hid1.shape)
-rand_hid2 = logistic(rand_hid1.dot(params.W_r2.T) + params.b_r2)
-rand_hid1 = rand_hid2 > np.random.random(rand_hid2.shape)
-initial_pen = rand_hid2
-
-
-#initial_v = np.hstack((initial_pen, uniform_initial_labels))
-initial_v = np.hstack((initial_pen, clamped_labels))
-
-sample_v = functools.partial(sample_v_softmax,
-                             k=mnist.NUM_CLASSES,
-                             clamped_labels=clamped_labels)
-
-gc = rbm.gibbs_chain(initial_v,
-                     rbm.params(params.W, params.v_bias, params.h_bias),
-                     rbm.sample_h,
-                     sample_v)
-
-# TODO: This is similar to rbm.fantasize. Refactor.
-# Start, end, step
-gen = itertools.islice(gc, 100, None, 8)
-# Count.
-gen = itertools.islice(gen, 250)
-# We only want the state of the visibles.
-gen = itertools.imap(lambda sample: sample[0], gen)
-# Downward pass.
-gen = itertools.imap(lambda v: downward_pass(v, params), gen)
-# Tile.
-gen = itertools.imap(functools.partial(utils.tile, grid_shape=(2, 5)), gen)
+params = parameters.load(OUTPUT_PATH, timestamp=1358586160)
+generate(params)

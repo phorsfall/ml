@@ -1,6 +1,9 @@
 import sys
 import itertools
 import operator
+import time
+import datetime
+
 import numpy as np
 
 def gradient_descent(f, x0, num_epochs, learning_rate):
@@ -24,13 +27,14 @@ def sgd(f, x0, batches, num_epochs,
     """
     make_tuple = _make_tuple_func(x0)
     x = x0
-
     momentum = _wrap(momentum)
     learning_rate = _wrap(learning_rate)
+    t0 = time.time()
 
-    # Initialize parameter delta.
+    # Initialize parameter delta. This is maintained outside of the
+    # main loop for purpose of implementing momentum.
     delta = [np.zeros_like(x_i) for x_i in x]
-
+    
     print
 
     for epoch in xrange(num_epochs):
@@ -55,12 +59,10 @@ def sgd(f, x0, batches, num_epochs,
             x = make_tuple(itertools.imap(operator.sub, x, delta))
             #x = make_tuple(x[i] - delta[i] for i in range(len(x)))
 
-            # Constrain weights.
-            # Maybe weight constraints should be parameterized by a
-            # function.
             if not weight_constraint is None:
-                x = make_tuple(constrain_l2_norm(x_i, weight_constraint)
-                               for x_i in x)
+                x = make_tuple(weight_constraint(x_i) for x_i in x)
+
+            # import pdb; pdb.set_trace()
 
             # I've removed this as it was filling up the undo buffer
             #when I working interactively in Emacs.
@@ -71,6 +73,9 @@ def sgd(f, x0, batches, num_epochs,
 
         if post_epoch is not None:
             post_epoch(x, epoch)
+    
+    duration = datetime.timedelta(seconds=int(time.time() - t0))
+    print '\nTraining took %s' % duration
 
     return x
 
@@ -157,46 +162,6 @@ def constrain_l2_norm(a, max_norm):
     scaling_factor = scaling_factor * mask
     scaling_factor = scaling_factor + (1 - mask)
     return a * scaling_factor[:,np.newaxis]
-
-# Helper functions for learning rate and momentum parameters.
-
-# I intentionally don't set defaults here to force myself to specify
-# them explicitly in calling code. This is because a) I don't know
-# that any values I may pick will work well across problems and b)
-# having the values in the code helps ensure reproducability.
-
-def step(initial, final, T):
-    """
-    """
-    def f(t):
-        if t < num_T:
-            return initial
-        else:
-            return final
-    return f
-
-def linear(initial, final, T):
-    """
-    Increase linearly from initial to final over T then remain at
-    final.
-    """
-    def f(t):
-        if t < T:
-            r = t / float(T)
-            p = (1 - r) * initial + r * final
-        else:
-            p = final
-        return p
-    return f
-
-def exponential(initial, decay_rate):
-    """
-    """
-    def f(t):
-        return initial * decay_rate ** t
-    return f
-
-# Other helpers.
 
 def _wrap(val):
     """

@@ -13,6 +13,17 @@ def targets_from_labels(labels, num_classes):
     """
     return np.eye(num_classes)[labels]
 
+def balance_classes(inputs, labels, num_classes):
+    indexes = [np.where(labels == i)[0] for i in range(num_classes)]
+    min_class_length = min(len(ix) for ix in indexes)
+    # Truncate indexes.
+    indexes = [ix[:min_class_length] for ix in indexes]
+    # Interleave each class index.
+    indexes = np.vstack(indexes).T.ravel()
+    out_targets = np.tile(np.identity(num_classes), (min_class_length, 1))
+    out_labels = np.tile(np.arange(num_classes), min_class_length)
+    return dataset(inputs[indexes], out_targets, out_labels)
+
 class BatchIterator:
     """
     """

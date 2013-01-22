@@ -121,24 +121,16 @@ def save_images(iterable, output_path):
     for item in iterable:
         image = Image.fromarray(item * 255)
         image = image.convert('RGB')
-        fn = os.path.join(output_path, 'sample%i.png'  % i)
+        fn = os.path.join(output_path, 'sample%i.png' % i)
         image.save(fn)
         i += 1
 
-# Used with optimize.sgd().
-# I'm a little nervous about pickling named tuples. If I move/rename
-# the namedtuple I think I hit problems unpickling. Is there something
-# better I could do?
-def save_params_hook(output_path):
+def make_output_directory(output_path):
     timestamp = str(int(time.time()))
     output_dir = os.path.join(output_path, timestamp)
     os.mkdir(output_dir)
-    print 'Saving parameters to \'%s\'.' % output_dir
-    def hook(params, epoch):
-        filename = '%i.pickle' % epoch
-        with(open(os.path.join(output_dir, filename), 'wb')) as f:
-            pickle.dump(params, f, -1)
-    return hook
+    print 'Output directory is \'%s\'' % output_dir
+    return output_dir
 
 def call_func_hook(f):
     def hook(params, *args):

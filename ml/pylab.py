@@ -18,4 +18,9 @@ def gs():
     matplotlib.rcParams['image.interpolation'] = 'none'
 
 def imtile(X, *args, **kwargs):
+    if 'v' in kwargs:
+        v = kwargs['v']
+        kwargs['vmin'] = -v
+        kwargs['vmax'] = v
+        del kwargs['v']
     matplotlib.pyplot.imshow(utils.tile(X), *args, **kwargs)
