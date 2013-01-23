@@ -19,27 +19,32 @@ def load_inputs():
 def ex1(inputs):
     """
     Gaussian/Bernoulli RBM.
-    
-    Learns edge detector like filters although learning is quite slow.
-
-    Momentum seems neccesary, without it this fails to learn anything.
-    (This was using momentum=0.5 for the first 5 epochs and
-    momentum=0.9 thereafter.)
-
-    Learning does happen if you don't use whitening, but the features
-    tend to be less localized when compared to the learned with
-    whitening. Interestingly the reconstruction error is lower without
-    whitening, but I suspect I'm comparing apples with oranges there.
-
-    With only 25 hidden units I couldn't find a way to learn anything
-    much. Contrast this to an autoencoder which does seem to learn
-    filters in a similar situation.
-
-    error (100 epochs) = 25.492607
-    error (500 epochs) = 24.096789
-
-    See ex1.png.
     """
+    # Can learns edge detector like filters although learning is quite
+    # slow and learning is very sensitive to meta-parameter selection.
+
+    # Momentum seems neccesary, without it it's difficult to learn
+    # anything.
+
+    # When learning on whitened data setting the fudge factor to
+    # something around 0.1 was important. Setting it much too much
+    # lower causes point filters to be learned.
+
+    # Learning does happen if you don't use whitening, but the
+    # features tend to be less localized when compared to the learned
+    # with whitening. Interestingly the reconstruction error is lower
+    # without whitening, but I suspect I'm comparing apples with
+    # oranges there.
+
+    # With only 25 hidden units I couldn't find a way to learn
+    # anything much. Contrast this to an autoencoder which does seem
+    # to learn filters in a similar situation.
+
+    # error (100 epochs) = 25.492607
+    # error (500 epochs) = 24.096789
+
+    # See ex1.png.
+
     inputs = utils.remove_dc(inputs)
     inputs, zca = utils.zca_white(inputs, 0.1)
     batches = data.BatchIterator(inputs, 50)
@@ -58,7 +63,7 @@ def ex1(inputs):
                       neg_free_energy_grad)
   
     learning_rate = 0.01
-    momentum = meta.step(0.5, 0.9, 5)  
+    momentum = meta.step(0.5, 0.9, 5)
     return optimize.sgd(f, initial_params, batches,
                         epochs, learning_rate, momentum)
 
@@ -66,19 +71,19 @@ def ex1(inputs):
 def ex2(inputs):
     """
     Gaussian/NReLU RBM.
-
-    Using noisy rectified linear units for the visibles speeds up
-    learning dramatically. The reconstruction error after a single
-    epoch is lower (21.6986) than after 500 epochs in ex1.
-
-    The filters learned have less noisy backgrounds than those learned
-    in ex1.
-
-    error (100 epochs) = 15.941531
-    error (500 epochs) = 15.908922
-
-    See ex2.png.
     """
+    # Using noisy rectified linear units for the visibles speeds up
+    # learning dramatically. The reconstruction error after a single
+    # epoch is lower (21.6986) than after 500 epochs in ex1.
+
+    # The filters learned have less noisy backgrounds than those
+    # learned in ex1.
+
+    # error (100 epochs) = 15.941531
+    # error (500 epochs) = 15.908922
+
+    # See ex2.png.
+
     inputs = utils.remove_dc(inputs)
     inputs, zca = utils.zca_white(inputs, 0.1)
     batches = data.BatchIterator(inputs, 50)
@@ -105,27 +110,31 @@ def ex2(inputs):
 def ex3(inputs):
     """
     Gaussian/NReLU RBM with learned visible variances.
-
-    I found it *essential* to add noise/sample from the visible units
-    during reconstruction. If I don't do this the variances increase
-    at each epoch (I'd expect them to decrease during learning from
-    their initial value of one) as does the error.
-    
-    This result was obtained by running SGD *without* momentum. The
-    default momentum schedule set-up a big oscillation which caused
-    the error to increase over a few epochs after which we learning
-    appeared to be stuck out on a plateau. More modest schedules (such
-    as 0.1 for the first 10 epochs, 0.2 thereafter) allow learning but
-    they don't result in any improvement in error.
-    
-    The variances learned are all very similar. Their mean is 0.39,
-    their standard deviation is 0.04.
-
-    error (100 epochs) = 7.424997
-    error (500 epochs) = 7.245722
-
-    See ex3.png.
     """
+    # I found it essential to add noise/sample from the visible units
+    # during reconstruction. If I don't do this the variances increase
+    # at each epoch (I'd expect them to decrease during learning from
+    # their initial value of one) as does the error.
+    
+    # This result was obtained by running SGD without using momentum.
+    # The default momentum schedule set-up a big oscillation which
+    # caused the error to increase over a few epochs after which we
+    # learning appeared to be stuck out on a plateau. More modest
+    # schedules (such as 0.1 for the first 10 epochs, 0.2 thereafter)
+    # allow learning but they don't result in any improvement in
+    # error.
+    
+    # The variances learned are all very similar. Their mean is 0.39,
+    # their standard deviation is 0.04.
+
+    # A quick test suggests that smaller initial weights lead to a
+    # slightly lower reconstruction error.
+
+    # error (100 epochs) = 7.401834
+    # error (500 epochs) = 7.245722
+
+    # See ex3.png.
+
     inputs = utils.remove_dc(inputs)
     inputs, zca = utils.zca_white(inputs, 0.1)
     batches = data.BatchIterator(inputs, 50)
