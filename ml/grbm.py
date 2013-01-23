@@ -1,10 +1,10 @@
 import collections
 import numpy as np
-from sigmoid import logistic
+from ml.sigmoid import logistic
 
 params = collections.namedtuple('params', 'W v_bias h_bias sigma')
 
-def initial_params(num_vis, num_hid):
+def initial_params(num_hid, num_vis):
     W = 0.05 * np.random.randn(num_hid, num_vis)
     v_bias = np.zeros(num_vis)
     h_bias = np.zeros(num_hid)
@@ -29,7 +29,7 @@ def sample_h_noisy_relu(rbm, v, end_of_chain):
         h = None
     return h, h_mean    
 
-def sample_v(rbm, h, h_mean, add_noise=True):
+def sample_v(rbm, h, add_noise=True):
     v_mean = (h.dot(rbm.W) * rbm.sigma) + rbm.v_bias
     # I'm considering creating a separate sample_v_with_noise
     # function rather than having this conditional.
@@ -37,10 +37,10 @@ def sample_v(rbm, h, h_mean, add_noise=True):
         v = rbm.sigma * np.random.standard_normal(v_mean.shape) + v_mean
     else:
         v = v_mean
-    return v
+    return v, v_mean
 
 def neg_free_energy_grad(rbm, sample, learn_sigma=True):
-    v, h, h_mean = sample
+    v, v_mean, h, h_mean = sample
     num_cases, num_vis = v.shape
     
     W_grad = h_mean.T.dot(v / rbm.sigma) / num_cases
