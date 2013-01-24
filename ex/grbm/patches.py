@@ -10,7 +10,7 @@ from ml import regularization as reg
 DATA_PATH = os.path.expanduser("~/Development/ml/datasets")
 
 def load_inputs():
-    # https://dl.dropbox.com/u/501760/ml/natural-image-patches-20k-8x8.pickle
+    # https://dl.dropbox.com/u/501760/ml/natural-image-patches-20k-8x8.pickle.gz
     fn = 'natural-image-patches-20k-8x8.pickle'
     with(open(os.path.join(DATA_PATH, fn))) as f:
         data = pickle.load(f)
