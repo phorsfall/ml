@@ -10,12 +10,10 @@ from ml import utils
 
 def gs():
     """
-    Default imshow to using a grayscale color map and disable
-    interpolation. This is useful when viewing weights, MNIST digits
-    etc.
+    Default imshow to using a grayscale color map. This is useful when
+    viewing weights, MNIST digits etc.
     """
     matplotlib.rcParams['image.cmap'] = 'gray'
-    matplotlib.rcParams['image.interpolation'] = 'none'
 
 def imtile(X, *args, **kwargs):
     if 'v' in kwargs:
@@ -23,4 +21,12 @@ def imtile(X, *args, **kwargs):
         kwargs['vmin'] = -v
         kwargs['vmax'] = v
         del kwargs['v']
-    matplotlib.pyplot.imshow(utils.tile(X), *args, **kwargs)
+    tile_kwargs = {}
+    if 'channel_count' in kwargs:
+        tile_kwargs['channel_count'] = kwargs['channel_count']
+        del kwargs['channel_count']
+    matplotlib.pyplot.imshow(utils.tile(X, **tile_kwargs), *args, **kwargs)
+
+def cimtile(X, *args, **kwargs):
+    kwargs['channel_count'] = 3
+    imtile(X, *args, **kwargs)

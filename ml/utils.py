@@ -36,18 +36,15 @@ def tile(X, grid_shape=None, spacing=1, channel_count=1):
     if channel_count == 1:
         for y in xrange(grid_shape[0]):
             for x in xrange(grid_shape[1]):
-                tile = np.reshape(X[y*grid_shape[1]+x,:], (tile_size, tile_size))
+                t = np.reshape(X[y*grid_shape[1]+x,:], (tile_size, tile_size))
                 out_image[
                     y*(tile_size+spacing):(y*(tile_size+spacing)+tile_size),
                     x*(tile_size+spacing):(x*(tile_size+spacing)+tile_size)
-                    ] = tile
+                    ] = t
     else:
-        raise Exception
-        # TODO: Test this still works for colour images.
-        # for i in range(channel_count):
-        #     out_image[:,:,i] = tile(
-        #         X[i*tile_length:(i+1)*tile_length,:],
-        #         grid_shape, spacing)
+        for i in range(channel_count):
+            out_image[:,:,i] = tile(X[:,i*tile_length:(i+1)*tile_length],
+                                    grid_shape, spacing)
 
     return out_image
 
