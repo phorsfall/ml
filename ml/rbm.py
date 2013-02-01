@@ -11,8 +11,8 @@ params = collections.namedtuple('params', 'W v_bias h_bias')
 def initial_params(num_hid, num_vis, sigma=0.01):
     # neg_free_energy_grad uses h_mean rather than h so small initial
     # weights are required to break the symmetry between hidden units.
-    # Initializing with from a normal with standard deviation of 0.01
-    # is recommended in "A Practical Guide to Training Restricted
+    # Initializing from a normal with standard deviation of 0.01 is
+    # recommended in "A Practical Guide to Training Restricted
     # Boltzmann Machines" and does appear to work well although
     # learning may initially be slow if testing with num_hid << 100.
     W = sigma * np.random.randn(num_hid, num_vis)
