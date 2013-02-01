@@ -52,7 +52,7 @@ def ex1(inputs):
     num_vis = 64
     num_hid = 100
     epochs = 500
-    initial_params = grbm.initial_params(num_hid, num_vis)
+    initial_params = grbm.initial_params(num_hid, num_vis, 0.05)
 
     sample_v = functools.partial(grbm.sample_v, add_noise=False)
     neg_free_energy_grad = functools.partial(grbm.neg_free_energy_grad,
@@ -91,7 +91,7 @@ def ex2(inputs):
     num_vis = 64
     num_hid = 100
     epochs = 500
-    initial_params = grbm.initial_params(num_hid, num_vis)
+    initial_params = grbm.initial_params(num_hid, num_vis, 0.05)
 
     sample_v = functools.partial(grbm.sample_v, add_noise=False)
     neg_free_energy_grad = functools.partial(grbm.neg_free_energy_grad,
@@ -142,7 +142,7 @@ def ex3(inputs):
     num_vis = 64
     num_hid = 100
     epochs = 500
-    initial_params = grbm.initial_params(num_hid, num_vis)
+    initial_params = grbm.initial_params(num_hid, num_vis, 0.05)
 
     def f(params, inputs):
         return rbm.cd(params, inputs,

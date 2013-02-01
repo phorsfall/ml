@@ -4,12 +4,12 @@ from ml.sigmoid import logistic
 
 params = collections.namedtuple('params', 'W v_bias h_bias sigma')
 
-def initial_params(num_hid, num_vis):
-    W = 0.05 * np.random.randn(num_hid, num_vis)
+def initial_params(num_hid, num_vis, sigma=0.01, vis_std_dev=1.0):
+    W = sigma * np.random.randn(num_hid, num_vis)
     v_bias = np.zeros(num_vis)
     h_bias = np.zeros(num_hid)
-    sigma = np.ones(num_vis)
-    return params(W, v_bias, h_bias, sigma)
+    rbm_sigma = np.ones(num_vis) * vis_std_dev
+    return params(W, v_bias, h_bias, rbm_sigma)
 
 def sample_h(rbm, v, end_of_chain):
     h_mean = logistic((v / rbm.sigma).dot(rbm.W.T) + rbm.h_bias)
