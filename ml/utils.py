@@ -116,11 +116,23 @@ def save_images(iterable, output_path):
     # them interactively.
     i = 0
     for item in iterable:
+        # TODO: Use save_image here.
         image = Image.fromarray(item * 255)
         image = image.convert('RGB')
         fn = os.path.join(output_path, 'sample%i.png' % i)
         image.save(fn)
         i += 1
+
+def save_image(array, filename):
+    """
+    Save <array> to disk as a PNG image. Assumes that all elements of
+    <array> lie in [0,1].
+    """
+    image = Image.fromarray(array * 255)
+    # 8 bits per pixel gray scale.
+    # http://www.pythonware.com/library/pil/handbook/concepts.htm
+    image = image.convert('L')
+    image.save(filename)
 
 def make_output_directory(output_path):
     timestamp = str(int(time.time()))
