@@ -76,6 +76,24 @@ def sample_images(images, sample_count=100, patch_size=8):
         X[i,:] = patch.reshape(patch_size**2)
     return X
 
+# TODO: Combine these two functions for extracting patches.
+
+# If the gray one sets c (channel count) to 1 then the only difference
+# between these two is the line that extracts the patch as a vector
+# given x, y, j. Extract that as a func. The reshape in the gray
+# version is the same as the ravel() call in the color version.
+
+def sample_color_images(images, sample_count=100, patch_size=8):
+    w, h, c, n = images.shape
+    X = np.zeros((sample_count, c*patch_size**2))
+    for i in xrange(sample_count):
+        j = np.random.randint(n)
+        x = np.random.randint(w - patch_size + 1)
+        y = np.random.randint(h - patch_size + 1)
+        patch = images[x:x+patch_size,y:y+patch_size,:,j].transpose((2, 0, 1))
+        X[i,:] = patch.ravel()
+    return X
+
 def zca_white(X, epsilon=0.0):
     """
     Perform ZCA whitening on the matrix X.
