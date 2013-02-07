@@ -10,6 +10,9 @@ from ml import regularization as reg
 DATA_PATH = os.path.expanduser("~/Development/ml/datasets")
 OUTPUT_PATH = os.path.expanduser('~/Development/ml/output')
 
+# This is the code for:
+# http://paulhorsfall.co.uk/articles/grbm-sparsity.html
+
 def load_inputs():
     # This data set is sampled from Bruno Olshausen's unwhitened
     # natural images: http://redwood.berkeley.edu/bruno/sparsenet/
