@@ -21,7 +21,8 @@ def sgd(f, x0, batches, num_epochs,
         learning_rate,
         momentum=0.,
         weight_constraint=None,
-        post_epoch=None):
+        post_epoch=None,
+        rmsprop=False):
     """
     Perform stochastic gradient descent on the function f.
     """
@@ -35,6 +36,9 @@ def sgd(f, x0, batches, num_epochs,
     # main loop for purpose of implementing momentum.
     delta = [np.zeros_like(x_i) for x_i in x]
     
+    # Running average for rmsprop.
+    avg_sq_grad = [np.ones_like(x_i) for x_i in x]
+
     print
 
     for epoch in xrange(num_epochs):
@@ -47,12 +51,24 @@ def sgd(f, x0, batches, num_epochs,
             batch_cost, grad = f(x, batch)
             cost += batch_cost
 
+            # Quick rmsprop implementation.
+            # Divide the gradient by the square root of the running
+            # average of the mean square of previous gradients.
+            if rmsprop:
+                for i, grad_i in enumerate(grad):
+                    avg_sq_grad[i] = 0.9 * avg_sq_grad[i] + 0.1 * (grad_i ** 2)
+                grad = tuple(grad_i / np.sqrt(avg_sq_grad[i])
+                             for i, grad_i
+                             in enumerate(grad))
+
+            # Apply momentum and the learning rate.
             for i, grad_i in enumerate(grad):
                 delta[i] = (p * delta[i]) + (e * grad_i)
                 
             # delta = tuple((p * delta_i) + (e * grad_i)
             #               for delta_i, grad_i
             #               in zip(delta, grad))
+
 
             # TODO: Is imap necessary here, can't I just use a
             # generator expression?
