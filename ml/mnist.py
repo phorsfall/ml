@@ -13,6 +13,8 @@ TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
 NUM_CLASSES = 10
 
+# Consider memoization here to save me continually commenting out
+# calls to this func once the data is in memory.
 def load_inputs(path, filename, rescale=True):
     """
     Load MNIST digit images from a gzipped IDX file. Return a
@@ -41,6 +43,8 @@ def load_labels(path, filename):
         data = np.fromstring(f.read(), np.dtype('>u1'))
         return data
 
+# Perhaps it would be better to pass in the desired validation set
+# size to make it easy to specify the empty set.
 def load_training_dataset(path,
                           inputs_filename=TRAIN_INPUTS,
                           labels_filename=TRAIN_LABELS,
