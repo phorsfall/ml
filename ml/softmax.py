@@ -1,4 +1,5 @@
 import collections
+import operator
 import numpy as np
 
 params = collections.namedtuple('params', 'W b')
@@ -16,7 +17,7 @@ def logsumexp(A):
     max_a = np.max(A, 1)
     return np.log(np.sum(np.exp(A - max_a), 1)) + max_a
 
-def cost(params, inputs, targets, weight_penalty=0.):
+def cost(params, inputs, targets, weight_decay=None):
     num_cases = inputs.shape[0]
     
     # Un-normalized log-prob.
@@ -26,25 +27,34 @@ def cost(params, inputs, targets, weight_penalty=0.):
     # Compute probabilities over classes.
     prob = np.exp(log_prob)
 
-    # np.dot(a, a) is the idiomatic way to do sum of squares, and is
-    # faster than np.sum(a ** 2). For 2d arrays even b = a.ravel();
-    # np.dot(b, b) appears quicker.
-    weight_cost = (0.5 * weight_penalty * (
-            np.sum(params.W ** 2) + np.sum(params.b ** 2)))
-
-    cost = weight_cost - (np.sum(log_prob * targets) / num_cases)
-
     error = prob - targets
-    W_grad = ((error).T.dot(inputs) / num_cases) + (weight_penalty * params.W)
-    b_grad = (np.sum(error, 0) / num_cases) + (weight_penalty * params.b)
+    W_grad = ((error).T.dot(inputs) / num_cases)
+    b_grad = (np.sum(error, 0) / num_cases)
 
-    return cost, (W_grad, b_grad)
+    cost = -(np.sum(log_prob * targets) / num_cases)
+    grad = (W_grad, b_grad)
+
+    if weight_decay:
+        weight_grad = []
+        for p in params:
+            wc, wg = weight_decay(p)
+            weight_grad.append(wg)
+            cost += wc
+        grad = map(operator.add, grad, weight_grad)
+
+    return cost, grad
 
 def predict(inputs, params):
     U = inputs.dot(params.W.T) + params.b
     log_prob = U - np.log(np.sum(np.exp(U), 1))[:,np.newaxis]
     prob = np.exp(log_prob)
     return np.argmax(prob, 1)
+
+def output(params, inputs):
+    U = inputs.dot(params.W.T) + params.b
+    log_prob = U - np.log(np.sum(np.exp(U), 1))[:,np.newaxis]
+    prob = np.exp(log_prob)
+    return prob
 
 def accuracy(inputs, labels, params):
     return np.mean(predict(inputs, params) == labels) * 100
