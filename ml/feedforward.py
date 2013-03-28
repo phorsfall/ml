@@ -107,8 +107,8 @@ def log_prob(params, data, dropout=None):
 
 def error(params, data, dropout=None):
     lp = log_prob(params, data, dropout)
-    accuracy = np.mean(np.argmax(lp, 1) == data.labels) * 100
-    classification_error = 100 - accuracy
+    accuracy = np.mean(np.argmax(lp, 1) == data.labels)
+    classification_error = 1 - accuracy
     num_cases = data.inputs.shape[0]
     cross_entropy_error = -np.sum(lp * data.targets) / num_cases
     return classification_error, cross_entropy_error
