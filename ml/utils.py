@@ -162,7 +162,6 @@ def make_output_directory(output_path):
 def call_func_hook(f):
     def hook(params, *args):
         val = f(params)
-        print val
         hook.history.append(val)
     hook.history = []
     return hook
