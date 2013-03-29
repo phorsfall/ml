@@ -88,7 +88,7 @@ def sgd(f, x0, batches, num_epochs,
         print 'epoch %3i, cost %0.6f' % (epoch, cost/len(batches))
 
         if post_epoch is not None:
-            post_epoch(x, epoch)
+            post_epoch(x, epoch, cost/len(batches))
     
     duration = datetime.timedelta(seconds=int(time.time() - t0))
     print '\nTraining took %s' % duration

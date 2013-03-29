@@ -39,7 +39,7 @@ def load(output_path, timestamp=None, epoch=None):
 # better I could do?
 
 def save_hook(output_dir):
-    def hook(params, epoch):
+    def hook(params, epoch, *args):
         filename = '%i.pickle' % epoch
         with(open(os.path.join(output_dir, filename), 'wb')) as f:
             pickle.dump(params, f, -1)
